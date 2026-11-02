@@ -191,7 +191,7 @@ export const StatsGraph: React.FC<StatsGraphProps> = ({ stats, level }) => {
         </div>
         <p className="text-xs text-stone-600 mb-4">
           最初は少ない粒数で比率が大きく上下に揺れ動きますが、株を増やしてたくさんの豆を数えるほど、理論上の比率
-          <strong className="text-[#3B6628] font-bold"> 0.75（75%）</strong> にピタリと収束していきます。
+          <strong className="text-[#3B6628] font-bold"> 0.75（75%）</strong> に近づいていきます。
         </p>
 
         {/* 自前SVGグラフ */}

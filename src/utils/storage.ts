@@ -389,6 +389,7 @@ export function loadGameState(): GameState {
             ...note,
             selectedOptionIndex: saved?.selectedOptionIndex ?? null,
             isSubmitted: saved?.isSubmitted ?? false,
+            predictionLocked: saved?.predictionLocked ?? saved?.isSubmitted ?? false,
           }];
         })
       ),

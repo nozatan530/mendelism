@@ -18,6 +18,7 @@ interface MysteryNoteProps {
   lv3MysterySeeds: Lv3MysterySeedStatus[];
   soundEnabled: boolean;
   onSelectOption: (optionIndex: number) => void;
+  onGoToGarden: () => void;
   onSubmitHypothesis: () => void;
   onConfirmLv3Deduction: (answers: { [seedId: string]: ShapeGenotype }) => boolean;
 }
@@ -31,6 +32,7 @@ export const MysteryNote: React.FC<MysteryNoteProps> = ({
   lv3MysterySeeds,
   soundEnabled,
   onSelectOption,
+  onGoToGarden,
   onSubmitHypothesis,
   onConfirmLv3Deduction,
 }) => {
@@ -119,20 +121,20 @@ export const MysteryNote: React.FC<MysteryNoteProps> = ({
           {/* 仮説選択肢 */}
           <div className="mt-5 space-y-2.5">
             <span className="text-xs font-bold text-stone-600 block">
-              あなたの仮説を選択してください：
+              {note.predictionLocked ? '実験の前に立てた予想：' : '畑に出る前に、予想を決めよう。'}
             </span>
             {note.options.map((opt, idx) => {
               const isSelected = note.selectedOptionIndex === idx;
               return (
                 <button
                   key={idx}
-                  onClick={() => !note.isSubmitted && onSelectOption(idx)}
-                  disabled={note.isSubmitted}
+                  onClick={() => !note.predictionLocked && onSelectOption(idx)}
+                  disabled={note.predictionLocked}
                   className={`w-full p-3.5 rounded-xl text-left text-xs sm:text-sm font-medium transition-all border flex items-center justify-between gap-3 ${
                     isSelected
                       ? 'bg-[#EBF5E5] border-[#4A7836] text-[#224016] ring-2 ring-[#4A7836]/20 font-bold'
                       : 'bg-white border-[#E0D5BE] hover:border-[#8DA67E] text-stone-700'
-                  } ${note.isSubmitted ? 'cursor-default' : 'cursor-pointer'}`}
+                  } ${note.predictionLocked ? 'cursor-default' : 'cursor-pointer'}`}
                 >
                   <span>{opt}</span>
                   {isSelected && <CheckCircle className="w-4 h-4 text-[#4A7836] shrink-0" />}
@@ -142,12 +144,21 @@ export const MysteryNote: React.FC<MysteryNoteProps> = ({
           </div>
 
           {/* 提出・検証ボタン */}
-          {!note.isSubmitted && (
+          {!note.predictionLocked && (
+            <button
+              onClick={onGoToGarden}
+              className="mt-6 w-full py-2.5 px-4 bg-[#4A7836] hover:bg-[#3B6229] text-white font-bold text-xs rounded-xl cursor-pointer"
+            >
+              畑で予想を決める
+            </button>
+          )}
+
+          {note.predictionLocked && !note.isSubmitted && (
             <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-[#DECFA4]">
               <span className="text-xs text-stone-600">
                 {canVerify
                   ? '実験データがそろいました。仮説と照合しましょう。'
-                  : `まず仮説を選ぼう。${missionText[level]}${level !== 3 ? `（今 ${stats.totalSeeds} 粒）` : ''}`}
+                  : `${missionText[level]}${level !== 3 ? `（今 ${stats.totalSeeds} 粒）` : ''}`}
               </span>
               <button
                 onClick={onSubmitHypothesis}

@@ -29,6 +29,7 @@ import { MysteryNote } from './components/MysteryNote';
 import { SeedBagView } from './components/SeedBagView';
 import { MendelGuide } from './components/MendelGuide';
 import { FlowerModal } from './components/FlowerModal';
+import { PredictionCard } from './components/PredictionCard';
 import { DevCheckPanel } from './components/DevCheckPanel';
 
 export default function App() {
@@ -379,6 +380,20 @@ export default function App() {
     });
   };
 
+  const handleLockPrediction = () => {
+    setState((prev) => {
+      const note = prev.notebooks[prev.currentLevel];
+      if (note.selectedOptionIndex === null) return prev;
+      return {
+        ...prev,
+        notebooks: {
+          ...prev.notebooks,
+          [prev.currentLevel]: { ...note, predictionLocked: true },
+        },
+      };
+    });
+  };
+
   const handleSubmitHypothesis = () => {
     setState((prev) => {
       const lv = prev.currentLevel;
@@ -468,7 +483,15 @@ export default function App() {
 
       {/* 2. メインコンテンツエリア */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
-        {state.activeTab === 'garden' && (
+        {state.activeTab === 'garden' && !state.notebooks[lv].predictionLocked && (
+          <PredictionCard
+            note={state.notebooks[lv]}
+            onSelectOption={handleSelectNoteOption}
+            onLock={handleLockPrediction}
+          />
+        )}
+
+        {state.activeTab === 'garden' && state.notebooks[lv].predictionLocked && (
           <div className="space-y-6">
             <MendelGuide state={state} />
             <GardenField
@@ -514,6 +537,7 @@ export default function App() {
             note={state.notebooks[state.currentLevel]}
             level={state.currentLevel}
             stats={state.levelStats[lv]}
+            onGoToGarden={() => handleTabChange('garden')}
             canVerify={lv === 3 ? testedAll : state.levelStats[lv].totalSeeds >= REQUIRED_SEEDS[lv]}
             lv3Results={state.lv3Results}
             lv3MysterySeeds={state.lv3MysterySeeds}

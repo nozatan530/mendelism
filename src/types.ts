@@ -86,6 +86,7 @@ export interface MysteryNoteItem {
   options: string[];
   correctOptionIndex: number;
   selectedOptionIndex: number | null;
+  predictionLocked?: boolean; // 実験前に予想を確定したか
   isSubmitted: boolean;
   explanation: string;
   punnettSquare: {
