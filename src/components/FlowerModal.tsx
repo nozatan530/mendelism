@@ -17,6 +17,17 @@ interface FlowerModalProps {
   onPollinate: (targetPlantId: string, donorPlantId: string) => void;
 }
 
+const STAMENS = [
+  { x: 104, y: 44 },
+  { x: 108, y: 40 },
+  { x: 112, y: 38 },
+  { x: 124, y: 38 },
+  { x: 128, y: 40 },
+  { x: 132, y: 44 },
+  { x: 106, y: 52 },
+  { x: 130, y: 52 },
+];
+
 export const FlowerModal: React.FC<FlowerModalProps> = ({
   plant,
   allPlants,
@@ -26,18 +37,19 @@ export const FlowerModal: React.FC<FlowerModalProps> = ({
   onPollinate,
 }) => {
   const [selectedDonorId, setSelectedDonorId] = useState<string | null>(null);
+  const [removedStamens, setRemovedStamens] = useState<number[]>([]);
 
-  // 他の開花中（FLOWER または BUD または PODS）の株を花粉提供親候補として抽出
-  const otherPlants = allPlants.filter(
-    (p): p is PlantData => p !== null && p.id !== plant.id
-  );
-  const donorCandidates = otherPlants.filter(
-    (p) => p.stage === 'FLOWER' || p.stage === 'BUD' || p.stage === 'PODS'
+  // 花粉がとれるのは、咲いていて、おしべが残っている株だけ
+  const donorCandidates = allPlants.filter(
+    (p): p is PlantData =>
+      p !== null && p.id !== plant.id && p.stage === 'FLOWER' && !p.isEmasculated
   );
 
-  const handleDoEmasculate = () => {
+  const handlePickStamen = (index: number) => {
     playEmasculateSnip(soundEnabled);
-    onEmasculate(plant.id);
+    const next = [...removedStamens, index];
+    setRemovedStamens(next);
+    if (next.length === STAMENS.length) onEmasculate(plant.id);
   };
 
   const handleDoPollinate = () => {
@@ -102,7 +114,7 @@ export const FlowerModal: React.FC<FlowerModalProps> = ({
 
             {/* つぼみ拡大イラスト */}
             <div className="bg-[#FFFFFF]/70 rounded-xl p-4 border border-[#E2D8C0] flex flex-col items-center justify-center">
-              <svg viewBox="0 0 240 140" className="w-60 h-36">
+              <svg viewBox="70 20 100 80" className="w-full max-w-xs">
                 {/* がく片（開いた状態） */}
                 <path
                   d="M 60 70 Q 90 90 120 70 Q 150 90 180 70 Q 120 120 60 70 Z"
@@ -129,17 +141,15 @@ export const FlowerModal: React.FC<FlowerModalProps> = ({
                 {/* おしべ（除雄前なら10本の黄色い葯が見える） */}
                 {!plant.isEmasculated ? (
                   <g>
-                    {[
-                      { x: 104, y: 44 },
-                      { x: 108, y: 40 },
-                      { x: 112, y: 38 },
-                      { x: 124, y: 38 },
-                      { x: 128, y: 40 },
-                      { x: 132, y: 44 },
-                      { x: 106, y: 52 },
-                      { x: 130, y: 52 },
-                    ].map((pos, idx) => (
-                      <g key={idx}>
+                    {STAMENS.map((pos, idx) =>
+                      removedStamens.includes(idx) ? null : (
+                      <g
+                        key={idx}
+                        onClick={() => handlePickStamen(idx)}
+                        className="cursor-pointer"
+                        role="button"
+                        aria-label={`おしべ${idx + 1}をつまむ`}
+                      >
                         <line
                           x1={pos.x}
                           y1={pos.y}
@@ -157,8 +167,10 @@ export const FlowerModal: React.FC<FlowerModalProps> = ({
                           stroke="#C49B14"
                           strokeWidth="0.8"
                         />
+                        <circle cx={pos.x} cy={pos.y} r="6" fill="transparent" />
                       </g>
-                    ))}
+                      )
+                    )}
                   </g>
                 ) : (
                   /* 除雄後: おしべが切除された状態 */
@@ -183,22 +195,19 @@ export const FlowerModal: React.FC<FlowerModalProps> = ({
                   </span>
                 ) : (
                   <span className="text-xs text-stone-600 font-medium">
-                    黄色いおしべが花の中に残っています
+                    黄色いおしべをタップして、ピンセットでつまみ取ろう（のこり {STAMENS.length - removedStamens.length} 本）
                   </span>
                 )}
               </div>
             </div>
 
-            {/* 除雄操作ボタン */}
-            {!plant.isEmasculated ? (
-              <button
-                onClick={handleDoEmasculate}
-                className="w-full py-3 px-4 bg-[#4A7836] hover:bg-[#3B6229] text-white font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-98"
-              >
-                <Scissors className="w-4 h-4" />
-                ピンセットでおしべを取り除く（除雄する）
-              </button>
-            ) : (
+            {!plant.isEmasculated && (
+              <div className="flex items-center justify-center gap-1.5 text-xs text-[#586C54]">
+                <Scissors className="w-3.5 h-3.5" />
+                <span>1本でも残すと自家受精してしまいます</span>
+              </div>
+            )}
+            {plant.isEmasculated && (
               <p className="text-xs text-center text-[#586C54]">
                 次の段階（開花）に進むと、筆を使って別の株の花粉を受粉させることができます。
               </p>
@@ -244,7 +253,7 @@ export const FlowerModal: React.FC<FlowerModalProps> = ({
 
                 {donorCandidates.length === 0 ? (
                   <p className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
-                    畑に花粉をとれる他の株がありません。別の区画に種をまいて育ててください。
+                    花粉をとれる株がありません。花粉親には、除雄していない、花が咲いている株が必要です。
                   </p>
                 ) : (
                   <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto p-1 border border-[#DECFA4] rounded-xl bg-white/60">
@@ -284,19 +293,36 @@ export const FlowerModal: React.FC<FlowerModalProps> = ({
                   </div>
                 )}
 
-                {/* 筆で受粉するボタン */}
-                <button
-                  onClick={handleDoPollinate}
-                  disabled={!selectedDonorId}
-                  className={`w-full py-2.5 px-4 font-bold text-sm rounded-xl transition-all shadow-xs flex items-center justify-center gap-2 ${
-                    selectedDonorId
-                      ? 'bg-[#D97706] hover:bg-[#B45309] text-white cursor-pointer active:scale-98'
-                      : 'bg-stone-200 text-stone-400 cursor-not-allowed'
-                  }`}
-                >
-                  <Brush className="w-4 h-4" />
-                  筆で花粉をつける（人工受粉）
-                </button>
+                {/* めしべを筆でタップして受粉する */}
+                <div className="bg-white/70 rounded-xl p-3 border border-[#E2D8C0] flex flex-col items-center">
+                  <svg viewBox="0 0 120 70" className="w-full max-w-[220px]">
+                    <path d="M 60 66 Q 60 40 58 22" stroke="#4E8431" strokeWidth="4" strokeLinecap="round" fill="none" />
+                    <g
+                      onClick={handleDoPollinate}
+                      role="button"
+                      aria-label="めしべに花粉をつける"
+                      className={selectedDonorId ? 'cursor-pointer' : ''}
+                    >
+                      <circle cx="58" cy="18" r="14" fill="transparent" />
+                      <circle
+                        cx="58"
+                        cy="18"
+                        r="7"
+                        fill="#75B54E"
+                        stroke="#3D6824"
+                        className={selectedDonorId ? 'animate-pulse' : ''}
+                      />
+                    </g>
+                    {plant.pollinatedByPlantId &&
+                      [[53, 14], [60, 12], [63, 19], [55, 21], [59, 17]].map(([x, y], i) => (
+                        <circle key={i} cx={x} cy={y} r="1.6" fill="#E8BA23" />
+                      ))}
+                  </svg>
+                  <span className="text-xs font-semibold text-[#586C54] flex items-center gap-1.5 mt-1">
+                    <Brush className="w-3.5 h-3.5" />
+                    {selectedDonorId ? '筆に花粉がつきました。めしべをタップ！' : 'まず花粉をとる株を選ぼう'}
+                  </span>
+                </div>
               </div>
             )}
           </div>

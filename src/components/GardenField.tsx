@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import { GameState, PlantData, PlantStage, SeedItem } from '../types';
 import { PlantVisual } from './PlantVisual';
 import { PeaVisual } from './PeaVisual';
@@ -21,6 +21,9 @@ import {
 
 interface GardenFieldProps {
   state: GameState;
+  seedBag: GameState['seedBag'];
+  selectedSeedId: string | null;
+  onSelectSeed: (id: string) => void;
   onPlantSeed: (slotIndex: number, seedBagItemId: string) => void;
   onPlantAllAvailable: (seedBagItemId: string) => void;
   onAdvanceTime: () => void;
@@ -33,6 +36,9 @@ interface GardenFieldProps {
 
 export const GardenField: React.FC<GardenFieldProps> = ({
   state,
+  seedBag,
+  selectedSeedId,
+  onSelectSeed,
   onPlantSeed,
   onPlantAllAvailable,
   onAdvanceTime,
@@ -42,16 +48,18 @@ export const GardenField: React.FC<GardenFieldProps> = ({
   onOpenFlowerModal,
   onGoToHarvest,
 }) => {
-  const [selectedSeedBagItemId, setSelectedSeedBagItemId] = useState<string>(
-    state.seedBag[0]?.id || ''
-  );
+  // 選択中の種が無くなった・別レベルのものなら、選べる先頭の種にする
+  const selectedSeedBagItemId =
+    seedBag.find((i) => i.id === selectedSeedId && i.count > 0)?.id ||
+    seedBag.find((i) => i.count > 0)?.id ||
+    '';
 
   const activePlants = state.plots.filter((p): p is PlantData => p !== null);
   const emptyPlotsCount = state.plots.filter((p) => p === null).length;
   const hasHarvestablePods = activePlants.some((p) => p.stage === 'PODS');
   const allInPods = activePlants.length > 0 && activePlants.every((p) => p.stage === 'PODS');
 
-  const selectedBagItem = state.seedBag.find((i) => i.id === selectedSeedBagItemId);
+  const selectedBagItem = seedBag.find((i) => i.id === selectedSeedBagItemId);
 
   const stageLabels: { [s in PlantStage]: string } = {
     SEEDED: 'まきたて',
@@ -85,13 +93,13 @@ export const GardenField: React.FC<GardenFieldProps> = ({
             まく種を選択：
           </span>
           <div className="flex items-center gap-1.5 flex-wrap">
-            {state.seedBag.map((item) => {
+            {seedBag.map((item) => {
               const isSelected = selectedSeedBagItemId === item.id;
               const hasCount = item.count > 0;
               return (
                 <button
                   key={item.id}
-                  onClick={() => setSelectedSeedBagItemId(item.id)}
+                  onClick={() => onSelectSeed(item.id)}
                   disabled={!hasCount}
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border flex items-center gap-2 ${
                     isSelected
@@ -113,7 +121,7 @@ export const GardenField: React.FC<GardenFieldProps> = ({
                       isSelected ? 'bg-white/30 text-white' : 'bg-stone-100 text-stone-600'
                     }`}
                   >
-                    {item.count}
+                    {item.isStartingSeed ? '∞' : item.count}
                   </span>
                 </button>
               );

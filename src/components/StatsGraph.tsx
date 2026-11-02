@@ -93,7 +93,7 @@ export const StatsGraph: React.FC<StatsGraphProps> = ({ stats, level }) => {
               <div className="flex items-center gap-3">
                 <PeaVisual shape="round" color="green" size={42} />
                 <div>
-                  <span className="text-xs text-stone-500 font-bold block">丸い豆（優性）</span>
+                  <span className="text-xs text-stone-500 font-bold block">丸い豆（顕性）</span>
                   <span className="text-2xl font-bold text-[#2C4528] tabular-nums">{round}</span>
                   <span className="text-xs text-stone-500 ml-1">粒</span>
                 </div>
@@ -112,7 +112,7 @@ export const StatsGraph: React.FC<StatsGraphProps> = ({ stats, level }) => {
               <div className="flex items-center gap-3">
                 <PeaVisual shape="wrinkled" color="green" size={42} />
                 <div>
-                  <span className="text-xs text-stone-500 font-bold block">しわの豆（劣性）</span>
+                  <span className="text-xs text-stone-500 font-bold block">しわの豆（潜性）</span>
                   <span className="text-2xl font-bold text-[#2C4528] tabular-nums">{wrinkled}</span>
                   <span className="text-xs text-stone-500 ml-1">粒</span>
                 </div>

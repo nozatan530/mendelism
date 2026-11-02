@@ -23,7 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
   onResetGame,
 }) => {
   const levelNames: { [k: number]: string } = {
-    1: 'Lv1 優性',
+    1: 'Lv1 顕性',
     2: 'Lv2 分離の法則',
     3: 'Lv3 検定交雑',
     4: 'Lv4 独立の法則',

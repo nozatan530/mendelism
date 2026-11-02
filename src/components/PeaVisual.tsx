@@ -24,7 +24,7 @@ export const PeaVisual: React.FC<PeaVisualProps> = ({
   // 色のパレット定義
   const isYellow = color === 'yellow';
 
-  // 黄色: 新鮮なゴールドイエロー（優性）
+  // 黄色: 新鮮なゴールドイエロー（顕性）
   const baseFill = isYellow ? '#E5B824' : '#629E37';
   const lightFill = isYellow ? '#FBEA72' : '#88C951';
   const darkStroke = isYellow ? '#B58B12' : '#457224';

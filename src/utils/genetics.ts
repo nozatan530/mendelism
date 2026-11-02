@@ -6,6 +6,7 @@
 import {
   ColorGenotype,
   ColorPhenotype,
+  GameState,
   Gamete,
   PlantGenotype,
   PlantPhenotype,
@@ -105,35 +106,63 @@ export function fertilize(mother: PlantGenotype, father: PlantGenotype): {
 }
 
 // ==========================================
-// 4. サヤと豆の生成
+// 4. 世代の判定とサヤ・豆の生成
 // 1株のサヤ数: 4〜8, 1サヤの豆数: 4〜8
 // 豆の形・色は「その豆の中の胚(子)の遺伝子型」で決まる
 // ==========================================
+export function nextGeneration(mother: SeedItem, father: SeedItem | null): SeedItem['generation'] {
+  if (!father) {
+    if (mother.generation === 'P') return 'P'; // 純系の自家受精は純系のまま
+    if (mother.generation === 'F1') return 'F2';
+    return 'Custom';
+  }
+  const isTestCross = (mystery: SeedItem, other: SeedItem) =>
+    mystery.generation === 'Lv3Mystery' && other.genotype.shape === 'aa';
+  if (isTestCross(mother, father) || isTestCross(father, mother)) return 'Test';
+  if (mother.generation === 'P' && father.generation === 'P') {
+    const same =
+      mother.genotype.shape === father.genotype.shape &&
+      mother.genotype.color === father.genotype.color;
+    return same ? 'P' : 'F1';
+  }
+  return 'Custom';
+}
+
+export function phenotypeLabel(phenotype: PlantPhenotype): string {
+  const shape = phenotype.shape === 'round' ? '丸' : 'しわ';
+  if (!phenotype.color) return shape;
+  return `${shape}・${phenotype.color === 'yellow' ? '黄' : '緑'}`;
+}
+
+function seedName(seed: SeedItem): string {
+  if (seed.generation === 'P' || seed.generation === 'Lv3Mystery') {
+    return seed.parentLabel || seed.generation;
+  }
+  const gen = seed.generation === 'Custom' || seed.generation === 'Test' ? '収穫豆' : seed.generation;
+  return `${gen}（${phenotypeLabel(seed.phenotype)}）`;
+}
+
 export function generatePodsForPlant(
-  motherGenotype: PlantGenotype,
+  mother: SeedItem,
   isEmasculated: boolean,
-  pollinatedByGenotype: PlantGenotype | null,
-  generationLabel: 'F1' | 'F2' | 'Test' | 'Custom',
-  parentLabelDesc: string
+  pollinator: SeedItem | null
 ): { pods: PodData[]; actualPollination: 'self' | 'cross' | 'failed' } {
   // 除雄したのに受粉させなかった花は実らない
-  if (isEmasculated && !pollinatedByGenotype) {
-    return {
-      pods: [],
-      actualPollination: 'failed',
-    };
+  if (isEmasculated && !pollinator) {
+    return { pods: [], actualPollination: 'failed' };
   }
 
   // 除雄していない花は必ず自家受精になる（他の花粉をつけても無効）
-  let fatherGenotype: PlantGenotype;
-  let actualPollination: 'self' | 'cross';
+  const father = isEmasculated ? pollinator : null;
+  const fatherGenotype = father ? father.genotype : mother.genotype;
+  const generation = nextGeneration(mother, father);
+  const sourceNote = father
+    ? `${seedName(mother)} × ${seedName(father)}`
+    : `${seedName(mother)} の自家受精`;
 
-  if (!isEmasculated) {
-    fatherGenotype = motherGenotype;
-    actualPollination = 'self';
-  } else {
-    fatherGenotype = pollinatedByGenotype!;
-    actualPollination = 'cross';
+  let testedMysteryId: string | undefined;
+  if (generation === 'Test' && father) {
+    testedMysteryId = mother.generation === 'Lv3Mystery' ? mother.mysteryId : father.mysteryId;
   }
 
   const podCount = getRandomInt(4, 8);
@@ -144,13 +173,13 @@ export function generatePodsForPlant(
     const seeds: SeedItem[] = [];
 
     for (let s = 0; s < seedCount; s++) {
-      const { genotype, phenotype } = fertilize(motherGenotype, fatherGenotype);
+      const { genotype, phenotype } = fertilize(mother.genotype, fatherGenotype);
       seeds.push({
         id: `seed_${Date.now()}_${i}_${s}_${Math.random().toString(36).substring(2, 6)}`,
         genotype,
         phenotype,
-        generation: generationLabel,
-        parentLabel: parentLabelDesc,
+        generation,
+        parentLabel: sourceNote,
       });
     }
 
@@ -158,13 +187,73 @@ export function generatePodsForPlant(
       id: `pod_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 6)}`,
       isCracked: false,
       seeds,
+      sourceNote,
+      pollination: father ? 'cross' : 'self',
+      testedMysteryId,
     });
   }
 
+  return { pods, actualPollination: father ? 'cross' : 'self' };
+}
+
+// そのレベルの集計に入れる豆か（純系の自家受精などで比率が濁らないように）
+export function isTargetSeed(level: number, seed: SeedItem): boolean {
+  const hasColor = !!seed.genotype.color;
+  if (level === 1) return seed.generation === 'F1' && !hasColor;
+  if (level === 2) return seed.generation === 'F2' && !hasColor;
+  if (level === 3) return seed.generation === 'Test';
+  return seed.generation === 'F2' && hasColor;
+}
+
+// 検証に必要な粒数（Lv3は3粒すべての検定交雑が条件）
+export const REQUIRED_SEEDS: { [level: number]: number } = { 1: 10, 2: 100, 3: 0, 4: 300 };
+
+// 収穫した豆を「世代＋見た目」で種袋にまとめる。遺伝子型は1粒ずつ保持する
+export function mergeHarvestIntoBag(bag: GameState['seedBag'], harvested: SeedItem[]): GameState['seedBag'] {
+  const result = [...bag];
+  harvested.forEach((seed) => {
+    const key = `${seed.generation}_${seed.phenotype.shape}_${seed.phenotype.color || 'none'}`;
+    const id = `harvest_${key}`;
+    const index = result.findIndex((item) => item.id === id);
+    if (index >= 0) {
+      const item = result[index];
+      const seeds = [...(item.seeds || []), seed];
+      result[index] = { ...item, seeds, count: seeds.length };
+    } else {
+      const gen = seed.generation === 'Test' ? '検定交雑の子' : seed.generation === 'Custom' ? 'その他の交配' : seed.generation;
+      result.unshift({
+        id,
+        sampleSeed: seed,
+        seeds: [seed],
+        count: 1,
+        label: `${gen} 収穫豆（${phenotypeLabel(seed.phenotype)}）`,
+      });
+    }
+  });
+  return result;
+}
+
+// 種袋から1粒取り出す。収穫豆はランダムな1粒、最初の種は減らない
+export function takeSeedFromBag(bag: GameState['seedBag'], itemId: string): { bag: GameState['seedBag']; seed: SeedItem } | null {
+  const item = bag.find((i) => i.id === itemId);
+  if (!item || item.count <= 0) return null;
+  if (item.isStartingSeed || !item.seeds) {
+    return { bag, seed: item.sampleSeed };
+  }
+  const index = getRandomInt(0, item.seeds.length - 1);
+  const seed = item.seeds[index];
+  const seeds = item.seeds.filter((_, i) => i !== index);
   return {
-    pods,
-    actualPollination,
+    bag: bag.map((i) => (i.id === itemId ? { ...i, seeds, count: seeds.length } : i)),
+    seed,
   };
+}
+
+// そのレベルの畑で選べる豆か
+export function isBagItemForLevel(item: GameState['seedBag'][number], level: number): boolean {
+  const hasColor = !!item.sampleSeed.genotype.color;
+  if (item.sampleSeed.generation === 'Lv3Mystery' && level !== 3) return false;
+  return level === 4 ? hasColor : !hasColor;
 }
 
 // ==========================================

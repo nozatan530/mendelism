@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { PodData, LevelStats, ColorPhenotype, ShapePhenotype } from '../types';
 import { PeaVisual } from './PeaVisual';
+import { isTargetSeed } from '../utils/genetics';
 import { playPodPop, playHarvestFanfare } from '../utils/sound';
 import { Sparkles, CheckCircle2, PackagePlus, ArrowRight } from 'lucide-react';
 
@@ -90,6 +91,8 @@ export const HarvestView: React.FC<HarvestViewProps> = ({
     }, 120);
   };
 
+  const hasTargetPod = pods.some((p) => p.seeds.some((s) => isTargetSeed(level, s)));
+
   // 空の状態
   if (pods.length === 0) {
     return (
@@ -110,6 +113,11 @@ export const HarvestView: React.FC<HarvestViewProps> = ({
         >
           収穫台にはまだサヤがありません
         </h3>
+        {harvestNote && (
+          <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-2.5 max-w-md mx-auto mb-3">
+            {harvestNote}
+          </p>
+        )}
         <p className="text-sm text-stone-600 max-w-md mx-auto mb-6">
           畑の区画に種をまき、「時間を進める」でサヤが実るまで育ててから「収穫する」を押してください。
         </p>
@@ -173,6 +181,13 @@ export const HarvestView: React.FC<HarvestViewProps> = ({
         </div>
       </div>
 
+      {!hasTargetPod && (
+        <div className="p-3.5 bg-[#FFF7E8] rounded-xl border border-[#F2D59B] text-xs text-[#6B5324] leading-relaxed">
+          <strong>この収穫は、今のレベルの集計には入りません。</strong>
+          サヤの上の記録を見て、どんな受粉で実ったか確かめよう。別の株と交配するには、つぼみのうちに除雄してから、開花したら筆で受粉させます。
+        </div>
+      )}
+
       {/* サヤ一覧グリッド */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {pods.map((pod, pIdx) => {
@@ -203,6 +218,10 @@ export const HarvestView: React.FC<HarvestViewProps> = ({
                   )}
                 </span>
               </div>
+
+              <p className={`text-[11px] font-semibold mb-2 ${pod.pollination === 'self' ? 'text-amber-800' : 'text-emerald-800'}`}>
+                {pod.pollination === 'self' ? '自家受精' : '人工交配'}：{pod.sourceNote}
+              </p>
 
               {/* サヤのビジュアル演出 */}
               {!pod.isCracked ? (
@@ -243,7 +262,7 @@ export const HarvestView: React.FC<HarvestViewProps> = ({
                 </div>
               ) : (
                 /* 割った後：左右に開いたサヤの中に豆が並ぶ */
-                <div className="h-24 flex items-center justify-around bg-[#F9F7EE] rounded-xl px-4 border border-[#E8DEC7] relative">
+                <div className="min-h-24 flex items-center justify-around bg-[#F9F7EE] rounded-xl px-2 py-1 border border-[#E8DEC7] relative">
                   {/* 背景の開いたサヤ殻 */}
                   <svg
                     viewBox="0 0 200 40"
@@ -263,14 +282,14 @@ export const HarvestView: React.FC<HarvestViewProps> = ({
                   </svg>
 
                   {/* 中に並ぶ豆 */}
-                  <div className="flex items-center justify-around w-full relative z-10">
+                  <div className="flex flex-wrap items-center justify-around gap-y-1 w-full relative z-10">
                     {pod.seeds.map((seed, sIdx) => {
                       return (
                         <div key={seed.id || sIdx} className="flex flex-col items-center">
                           <PeaVisual
                             shape={seed.phenotype.shape}
                             color={seed.phenotype.color}
-                            size={34}
+                            size={28}
                           />
                           <span className="text-[10px] text-stone-500 font-bold mt-1">
                             {seed.phenotype.shape === 'round' ? '丸' : 'しわ'}
@@ -300,7 +319,7 @@ export const HarvestView: React.FC<HarvestViewProps> = ({
               今回の収穫集計（割った豆の総数：{totalCrackedSeeds}粒）
             </h3>
             <span className="text-xs text-stone-600">
-              ※同一サヤ内で母株に関係なく胚の遺伝子型に応じて実ります
+              ※豆の形は、母株ではなく豆の中の胚（子）の遺伝子型で決まります
             </span>
           </div>
 

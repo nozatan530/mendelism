@@ -80,7 +80,7 @@ export const SeedBagView: React.FC<SeedBagViewProps> = ({
                       世代: {seed.generation}
                     </span>
                     <span className="text-xs font-bold text-[#2A4428] tabular-nums">
-                      残り {item.count} 粒
+                      {item.isStartingSeed ? '何度でも使える' : `残り ${item.count} 粒`}
                     </span>
                   </div>
 

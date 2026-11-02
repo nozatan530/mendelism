@@ -12,7 +12,7 @@ import {
   ShapeGenotype,
 } from '../types';
 
-const STORAGE_KEY = 'mendel_garden_save_v1';
+const STORAGE_KEY = 'mendel_garden_save_v2';
 
 export function createInitialLevelStats(): LevelStats {
   return {
@@ -33,7 +33,7 @@ export function createDefaultNotebooks(): { [level: number]: MysteryNoteItem } {
   return {
     1: {
       level: 1,
-      title: '第1章：優性の発見',
+      title: '第1章：顕性の発見',
       question:
         '純系の「丸（AA）」と「しわ（aa）」を人工交配してできた種子（F1）は、どんな形になるだろう？',
       options: [
@@ -45,7 +45,7 @@ export function createDefaultNotebooks(): { [level: number]: MysteryNoteItem } {
       selectedOptionIndex: null,
       isSubmitted: false,
       explanation:
-        '異なる対立形質をもつ純系同士を交配したとき、子（F1）には一方の形質だけが現れます。これを「優性の法則」と呼びます。現れる形質を優性（丸・A）、隠れる形質を劣性（しわ・a）といいます。',
+        '異なる対立形質をもつ純系同士を交配したとき、子（F1）には一方の形質だけが現れます。現れる形質を顕性（丸・A）、現れない形質を潜性（しわ・a）といいます。以前は優性・劣性と呼ばれていましたが、形質がすぐれている・劣っているという意味ではありません。',
       punnettSquare: {
         headersCol: ['A (丸親)', 'A (丸親)'],
         headersRow: ['a (しわ親)', 'a (しわ親)'],
@@ -98,25 +98,25 @@ export function createDefaultNotebooks(): { [level: number]: MysteryNoteItem } {
         '見た目が丸いエンドウが純系（AA）かヘテロ（Aa）かを確かめるには、どうすればよいだろう？',
       options: [
         '虫眼鏡で表面を詳しく見比べれば見抜ける',
-        '劣性の「しわ（aa）」と交配し、子にしわが出るか調べる',
+        '潜性の「しわ（aa）」と交配し、子にしわが出るか調べる',
         'もう一度丸い豆と交配して様子を見る',
       ],
       correctOptionIndex: 1,
       selectedOptionIndex: null,
       isSubmitted: false,
       explanation:
-        '優性の表現型を示す個体の遺伝子型（AA または Aa）を調べるために、劣性のホモ接合体（aa）と交配することを「検定交雑（テストクロス）」と呼びます。親が Aa であれば、子に劣性（しわ：aa）が 1:1 の比率で現れるため、一粒でもしわが出れば Aa だと確定できます！',
+        '顕性の表現型を示す個体の遺伝子型（AA または Aa）を調べるために、潜性のホモ接合体（aa）と交配することを「検定交雑（テストクロス）」と呼びます。親が Aa であれば、子は 丸：しわ ＝ 1：1 で現れるため、1粒でもしわが出れば Aa だと確定できます（図）。親が AA なら子はすべて Aa（丸）です。',
       punnettSquare: {
-        headersCol: ['A (親)', 'a または A (親)'],
+        headersCol: ['A (Aa親)', 'a (Aa親)'],
         headersRow: ['a (検定親)', 'a (検定親)'],
         grid: [
           [
             { genotype: 'Aa', phenotype: '丸' },
-            { genotype: 'aa (親がAaなら)', phenotype: 'しわ' },
+            { genotype: 'aa', phenotype: 'しわ' },
           ],
           [
             { genotype: 'Aa', phenotype: '丸' },
-            { genotype: 'aa (親がAaなら)', phenotype: 'しわ' },
+            { genotype: 'aa', phenotype: 'しわ' },
           ],
         ],
       },
@@ -171,8 +171,12 @@ export function createDefaultNotebooks(): { [level: number]: MysteryNoteItem } {
 }
 
 export function generateDefaultLv3MysterySeeds(): Lv3MysterySeedStatus[] {
-  // 3粒の謎の丸い豆（AAとAaをランダムまたは確定で混在: 1粒AA, 2粒Aa など）
-  const candidates: ShapeGenotype[] = Math.random() < 0.5 ? ['AA', 'Aa', 'Aa'] : ['Aa', 'AA', 'Aa'];
+  // 3粒の謎の丸い豆。AAとAaが必ず混ざり、並びは毎回変わる
+  const candidates: ShapeGenotype[] = Math.random() < 0.5 ? ['AA', 'Aa', 'Aa'] : ['AA', 'AA', 'Aa'];
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+  }
   return [
     {
       id: 'lv3_mystery_1',
@@ -261,6 +265,7 @@ export function getDefaultSeedBagForLevel(
         phenotype: { shape: 'round' as const },
         generation: 'Lv3Mystery' as const,
         parentLabel: m.name,
+        mysteryId: m.id,
         identifiedGenotype: m.confirmed ? m.realGenotype : undefined,
       },
       count: 4,
@@ -348,6 +353,7 @@ export function createDefaultState(): GameState {
     },
     notebooks: createDefaultNotebooks(),
     lv3MysterySeeds: lv3Mysteries,
+    lv3Results: {},
     soundEnabled: true,
     activeTab: 'garden',
   };
@@ -375,11 +381,19 @@ export function loadGameState(): GameState {
         3: parsed.levelStats?.[3] || createInitialLevelStats(),
         4: parsed.levelStats?.[4] || createInitialLevelStats(),
       },
-      notebooks: {
-        ...createDefaultNotebooks(),
-        ...(parsed.notebooks || {}),
-      },
+      // 文面は常に最新を使い、利用者の回答だけを復元する
+      notebooks: Object.fromEntries(
+        Object.entries(def.notebooks).map(([lv, note]) => {
+          const saved = parsed.notebooks?.[Number(lv)];
+          return [lv, {
+            ...note,
+            selectedOptionIndex: saved?.selectedOptionIndex ?? null,
+            isSubmitted: saved?.isSubmitted ?? false,
+          }];
+        })
+      ),
       lv3MysterySeeds: parsed.lv3MysterySeeds || def.lv3MysterySeeds,
+      lv3Results: parsed.lv3Results || {},
       soundEnabled: parsed.soundEnabled !== undefined ? parsed.soundEnabled : true,
       activeTab: parsed.activeTab || 'garden',
     };

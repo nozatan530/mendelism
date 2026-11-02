@@ -4,14 +4,17 @@
  */
 
 import React, { useState } from 'react';
-import { MysteryNoteItem, Lv3MysterySeedStatus, ShapeGenotype } from '../types';
+import { GameState, LevelStats, MysteryNoteItem, Lv3MysterySeedStatus, ShapeGenotype } from '../types';
+import { REQUIRED_SEEDS } from '../utils/genetics';
 import { playSuccessChime } from '../utils/sound';
 import { BookOpen, CheckCircle, HelpCircle, Sparkles, Award } from 'lucide-react';
 
 interface MysteryNoteProps {
   note: MysteryNoteItem;
   level: number;
-  totalSeedsHarvested: number;
+  stats: LevelStats;
+  canVerify: boolean;
+  lv3Results: GameState['lv3Results'];
   lv3MysterySeeds: Lv3MysterySeedStatus[];
   soundEnabled: boolean;
   onSelectOption: (optionIndex: number) => void;
@@ -22,20 +25,31 @@ interface MysteryNoteProps {
 export const MysteryNote: React.FC<MysteryNoteProps> = ({
   note,
   level,
-  totalSeedsHarvested,
+  stats,
+  canVerify,
+  lv3Results,
   lv3MysterySeeds,
   soundEnabled,
   onSelectOption,
   onSubmitHypothesis,
   onConfirmLv3Deduction,
 }) => {
-  const [lv3Guesses, setLv3Guesses] = useState<{ [seedId: string]: ShapeGenotype }>({
-    lv3_mystery_1: lv3MysterySeeds[0]?.userGuess || 'Aa',
-    lv3_mystery_2: lv3MysterySeeds[1]?.userGuess || 'AA',
-    lv3_mystery_3: lv3MysterySeeds[2]?.userGuess || 'Aa',
-  });
+  const [lv3Guesses, setLv3Guesses] = useState<{ [seedId: string]: ShapeGenotype }>({});
   const [lv3ErrorMsg, setLv3ErrorMsg] = useState<string | null>(null);
   const [lv3SuccessMsg, setLv3SuccessMsg] = useState<string | null>(null);
+
+  const isCorrect = note.selectedOptionIndex === note.correctOptionIndex;
+  const allGuessed = lv3MysterySeeds.every((m) => lv3Guesses[m.id]);
+  const experimentResult =
+    level === 4
+      ? `丸・黄 ${stats.roundYellow}：丸・緑 ${stats.roundGreen}：しわ・黄 ${stats.wrinkledYellow}：しわ・緑 ${stats.wrinkledGreen}`
+      : `丸 ${stats.round}：しわ ${stats.wrinkled}`;
+  const missionText: { [lv: number]: string } = {
+    1: `純系の丸としわを交配し、F1の豆を${REQUIRED_SEEDS[1]}粒以上数えると検証できます。`,
+    2: `F1を自家受精させ、F2の豆を${REQUIRED_SEEDS[2]}粒以上数えると検証できます。`,
+    3: '謎の丸豆3種をすべて、しわ（aa）と交配して収穫すると検証できます。',
+    4: `F1（AaBb）を自家受精させ、F2の豆を${REQUIRED_SEEDS[4]}粒以上数えると検証できます。`,
+  };
 
   const isLv3AllConfirmed = lv3MysterySeeds.every((m) => m.confirmed);
 
@@ -131,15 +145,15 @@ export const MysteryNote: React.FC<MysteryNoteProps> = ({
           {!note.isSubmitted && (
             <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-[#DECFA4]">
               <span className="text-xs text-stone-600">
-                {totalSeedsHarvested > 0
-                  ? `現在 ${totalSeedsHarvested} 粒の栽培データが集まっています。`
-                  : '畑でエンドウを育ててサヤを割ると、確信を持って検証できます。'}
+                {canVerify
+                  ? '実験データがそろいました。仮説と照合しましょう。'
+                  : `まず仮説を選ぼう。${missionText[level]}${level !== 3 ? `（今 ${stats.totalSeeds} 粒）` : ''}`}
               </span>
               <button
                 onClick={onSubmitHypothesis}
-                disabled={note.selectedOptionIndex === null}
+                disabled={note.selectedOptionIndex === null || !canVerify}
                 className={`px-6 py-2.5 rounded-xl font-bold text-xs transition-all shadow-xs flex items-center gap-2 ${
-                  note.selectedOptionIndex !== null
+                  note.selectedOptionIndex !== null && canVerify
                     ? 'bg-[#4A7836] hover:bg-[#3B6229] text-white cursor-pointer active:scale-98'
                     : 'bg-stone-200 text-stone-400 cursor-not-allowed'
                 }`}
@@ -153,6 +167,11 @@ export const MysteryNote: React.FC<MysteryNoteProps> = ({
           {/* 検証結果 & パネット方形の解説 */}
           {note.isSubmitted && (
             <div className="mt-6 pt-5 border-t border-[#DECFA4] space-y-4 animate-in fade-in">
+              <div className={`p-4 rounded-xl border text-xs sm:text-sm ${isCorrect ? 'bg-[#EDF7E7] border-[#C5E5B6] text-[#27481B]' : 'bg-[#FFF7E8] border-[#F2D59B] text-[#6B5324]'}`}>
+                <strong>{isCorrect ? 'あなたの仮説は実験で確かめられました！' : '仮説とは違う結果でした。予想が外れたところに発見があります。'}</strong>
+                {level !== 3 && <p className="mt-1">あなたの実験：{experimentResult}</p>}
+                <p className="mt-1">正しい答え：{note.options[note.correctOptionIndex]}</p>
+              </div>
               <div className="p-4 bg-[#EDF7E7] rounded-xl border border-[#C5E5B6] text-xs sm:text-sm text-[#27481B]">
                 <div className="flex items-center gap-1.5 font-bold mb-1 text-[#3B6628]">
                   <Sparkles className="w-4 h-4 text-[#E5B824]" />
@@ -214,6 +233,12 @@ export const MysteryNote: React.FC<MysteryNoteProps> = ({
         </div>
       </div>
 
+      {level === 4 && note.isSubmitted && (
+        <div className="p-4 bg-[#EDF7E7] rounded-2xl border border-[#C5E5B6] text-sm font-bold text-[#27481B] text-center">
+          全レベル達成！ メンデルと同じ道のりで、遺伝の法則を自分の手で確かめました。
+        </div>
+      )}
+
       {/* Lv3 専用：検定交雑の謎解き判定セクション */}
       {level === 3 && (
         <div className="bg-[#FAF7F0] border-2 border-[#D8C69F] rounded-2xl p-6 shadow-sm">
@@ -227,16 +252,13 @@ export const MysteryNote: React.FC<MysteryNoteProps> = ({
             </h3>
           </div>
           <p className="text-xs text-stone-600 mb-4 leading-relaxed">
-            見た目が「丸い豆」である3株（①〜③）をそれぞれ劣性の「しわ（aa）」と交配させました。
-            収穫されたサヤを割ったとき、
-            <span className="font-bold text-[#3B6628]">子に1粒でも『しわ』が現れた株はヘテロの『Aa』</span>、
-            <span className="font-bold text-[#3B6628]">すべて丸い豆しか出なかった株は純系の『AA』</span>
-            です。推理した遺伝子型を選んで判定してください！
+            しわ（aa）との交配で得た子の数を見て、3粒それぞれの遺伝子型を推理しよう。
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
             {lv3MysterySeeds.map((seed) => {
-              const currentGuess = lv3Guesses[seed.id] || 'Aa';
+              const currentGuess = lv3Guesses[seed.id];
+              const result = lv3Results[seed.id];
               return (
                 <div
                   key={seed.id}
@@ -245,6 +267,9 @@ export const MysteryNote: React.FC<MysteryNoteProps> = ({
                   <span className="text-sm font-bold text-[#2C4528] block mb-2">
                     {seed.name}
                   </span>
+                  <p className="text-xs text-stone-600 mb-2">
+                    {result ? `子：丸 ${result.round} ／ しわ ${result.wrinkled}` : 'まだ検定交雑していません'}
+                  </p>
                   {seed.confirmed ? (
                     <div className="p-2 bg-[#E5F5DC] rounded-lg border border-[#B3DE9C] text-xs font-bold text-[#2E5E1F]">
                       正解確定: <span className="font-mono text-base">{seed.realGenotype}</span>
@@ -302,7 +327,8 @@ export const MysteryNote: React.FC<MysteryNoteProps> = ({
           {!isLv3AllConfirmed && (
             <button
               onClick={handleSubmitDeduction}
-              className="w-full py-2.5 px-4 bg-[#D97706] hover:bg-[#B45309] text-white font-bold text-sm rounded-xl transition-all shadow-xs cursor-pointer active:scale-98"
+              disabled={!allGuessed || !canVerify}
+              className="w-full py-2.5 px-4 bg-[#D97706] hover:bg-[#B45309] disabled:bg-stone-200 disabled:text-stone-400 disabled:cursor-not-allowed text-white font-bold text-sm rounded-xl transition-all shadow-xs cursor-pointer active:scale-98"
             >
               遺伝子型の推理を判定する
             </button>

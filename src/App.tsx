@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { GameState, PlantData, PlantGenotype, PodData, SeedItem, ShapeGenotype } from './types';
+import { GameState, PlantData, PodData, SeedItem, ShapeGenotype } from './types';
 import {
   loadGameState,
   saveGameState,
@@ -12,7 +12,14 @@ import {
   getDefaultSeedBagForLevel,
   createDefaultState,
 } from './utils/storage';
-import { generatePodsForPlant } from './utils/genetics';
+import {
+  generatePodsForPlant,
+  isBagItemForLevel,
+  isTargetSeed,
+  mergeHarvestIntoBag,
+  REQUIRED_SEEDS,
+  takeSeedFromBag,
+} from './utils/genetics';
 import { playHarvestFanfare, playSuccessChime } from './utils/sound';
 import { Header } from './components/Header';
 import { GardenField } from './components/GardenField';
@@ -29,6 +36,7 @@ export default function App() {
   const [focusedPlantModal, setFocusedPlantModal] = useState<PlantData | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isCheckMode, setIsCheckMode] = useState(false);
+  const [selectedSeedId, setSelectedSeedId] = useState<string | null>(null);
 
   // 初回マウント時にURLパラメータ ?check を判定
   useEffect(() => {
@@ -92,84 +100,44 @@ export default function App() {
   // ==========================================
   // ハンドラー: 畑での栽培・種まき
   // ==========================================
+  const newPlant = (slotIndex: number, seed: SeedItem): PlantData => ({
+    id: `plant_${Date.now()}_${slotIndex}`,
+    slotIndex,
+    seed: { ...seed, id: `plant_seed_${Date.now()}_${slotIndex}` },
+    stage: 'SEEDED',
+    isEmasculated: false,
+    pollinatedByPlantId: null,
+    pollinationResult: 'self',
+    pods: [],
+  });
+
   const handlePlantSeed = (slotIndex: number, seedBagItemId: string) => {
     setState((prev) => {
-      const bagItem = prev.seedBag.find((i) => i.id === seedBagItemId);
-      if (!bagItem || bagItem.count <= 0) return prev;
-
-      const newSeed: SeedItem = {
-        ...bagItem.sampleSeed,
-        id: `plant_seed_${Date.now()}_${slotIndex}`,
-      };
-
-      const newPlant: PlantData = {
-        id: `plant_${Date.now()}_${slotIndex}`,
-        slotIndex,
-        seed: newSeed,
-        stage: 'SEEDED',
-        isEmasculated: false,
-        pollinatedByPlantId: null,
-        pollinationResult: 'self',
-        pods: [],
-      };
-
+      const taken = takeSeedFromBag(prev.seedBag, seedBagItemId);
+      if (!taken) return prev;
       const newPlots = [...prev.plots];
-      newPlots[slotIndex] = newPlant;
-
-      const newSeedBag = prev.seedBag.map((item) =>
-        item.id === seedBagItemId ? { ...item, count: item.count - 1 } : item
-      );
-
-      return {
-        ...prev,
-        plots: newPlots,
-        seedBag: newSeedBag,
-      };
+      newPlots[slotIndex] = newPlant(slotIndex, taken.seed);
+      return { ...prev, plots: newPlots, seedBag: taken.bag };
     });
   };
 
   const handlePlantAllAvailable = (seedBagItemId: string) => {
     setState((prev) => {
-      const bagItem = prev.seedBag.find((i) => i.id === seedBagItemId);
-      if (!bagItem || bagItem.count <= 0) return prev;
-
-      let remainingCount = bagItem.count;
+      let bag = prev.seedBag;
       const newPlots = [...prev.plots];
-
       for (let i = 0; i < newPlots.length; i++) {
-        if (newPlots[i] === null && remainingCount > 0) {
-          const newSeed: SeedItem = {
-            ...bagItem.sampleSeed,
-            id: `plant_seed_${Date.now()}_${i}`,
-          };
-          newPlots[i] = {
-            id: `plant_${Date.now()}_${i}`,
-            slotIndex: i,
-            seed: newSeed,
-            stage: 'SEEDED',
-            isEmasculated: false,
-            pollinatedByPlantId: null,
-            pollinationResult: 'self',
-            pods: [],
-          };
-          remainingCount--;
-        }
+        if (newPlots[i] !== null) continue;
+        const taken = takeSeedFromBag(bag, seedBagItemId);
+        if (!taken) break;
+        bag = taken.bag;
+        newPlots[i] = newPlant(i, taken.seed);
       }
-
-      const newSeedBag = prev.seedBag.map((item) =>
-        item.id === seedBagItemId ? { ...item, count: remainingCount } : item
-      );
-
-      return {
-        ...prev,
-        plots: newPlots,
-        seedBag: newSeedBag,
-      };
+      return { ...prev, plots: newPlots, seedBag: bag };
     });
   };
 
   // 成長ステージの段階進行
-  const advancePlantStage = (plant: PlantData, allPlots: (PlantData | null)[]): PlantData => {
+  const advancePlantStage = (plant: PlantData): PlantData => {
     switch (plant.stage) {
       case 'SEEDED':
         return { ...plant, stage: 'SPROUT' };
@@ -181,30 +149,10 @@ export default function App() {
         return { ...plant, stage: 'FLOWER' };
       case 'FLOWER': {
         // FLOWER -> PODS (サヤ結実計算)
-        let pollinatorGenotype: PlantGenotype | null = null;
-        let parentDesc = plant.seed.parentLabel || '自株';
-
-        if (plant.pollinatedByPlantId) {
-          const donor = allPlots.find((p) => p?.id === plant.pollinatedByPlantId);
-          if (donor) {
-            pollinatorGenotype = donor.seed.genotype;
-            parentDesc = `${plant.seed.parentLabel || '母株'} × ${donor.seed.parentLabel || '花粉親'}`;
-          }
-        }
-
-        const genLabel =
-          plant.seed.generation === 'P'
-            ? 'F1'
-            : plant.seed.generation === 'F1'
-            ? 'F2'
-            : plant.seed.generation;
-
         const { pods, actualPollination } = generatePodsForPlant(
-          plant.seed.genotype,
+          plant.seed,
           plant.isEmasculated,
-          pollinatorGenotype,
-          genLabel as 'F1' | 'F2' | 'Custom',
-          parentDesc
+          plant.pollinatorSeed || null
         );
 
         return {
@@ -224,7 +172,7 @@ export default function App() {
     setState((prev) => {
       const newPlots = prev.plots.map((p) => {
         if (!p) return null;
-        return advancePlantStage(p, prev.plots);
+        return advancePlantStage(p);
       });
       return { ...prev, plots: newPlots };
     });
@@ -237,7 +185,7 @@ export default function App() {
       for (let step = 0; step < 5; step++) {
         currentPlots = currentPlots.map((p) => {
           if (!p) return null;
-          return advancePlantStage(p, currentPlots);
+          return advancePlantStage(p);
         });
       }
       return { ...prev, plots: currentPlots };
@@ -274,7 +222,7 @@ export default function App() {
           return {
             ...p,
             pollinatedByPlantId: donorPlantId,
-            pollinatorGenotype: donor ? donor.seed.genotype : undefined,
+            pollinatorSeed: donor ? donor.seed : undefined,
           };
         }
         return p;
@@ -290,36 +238,23 @@ export default function App() {
     const plantsWithPods = state.plots.filter((p): p is PlantData => p !== null && p.stage === 'PODS');
     if (plantsWithPods.length === 0) return;
 
-    let collectedPods: PodData[] = [];
-    const notes: string[] = [];
-
-    plantsWithPods.forEach((plant) => {
-      if (plant.pods.length > 0) {
-        collectedPods = [...collectedPods, ...plant.pods];
-        if (plant.pollinationResult === 'self') {
-          notes.push(`${plant.slotIndex + 1}番:自家受精`);
-        } else if (plant.pollinationResult === 'cross') {
-          notes.push(`${plant.slotIndex + 1}番:人工交配`);
-        }
-      }
-    });
+    const collectedPods: PodData[] = plantsWithPods.flatMap((plant) => plant.pods);
+    const failedCount = plantsWithPods.filter((p) => p.pollinationResult === 'failed').length;
+    const notes = [`${plantsWithPods.length}株から${collectedPods.length}個のサヤを収穫`];
+    if (failedCount > 0) {
+      notes.push(`${failedCount}株は除雄後に受粉しなかったため実りませんでした`);
+    }
 
     playHarvestFanfare(state.soundEnabled);
 
     // 収穫台にサヤをセットし、収穫後の株を片付けて次の栽培を可能にする
-    setState((prev) => {
-      const newPlots = prev.plots.map((p) => (p && p.stage === 'PODS' ? null : p));
-      return {
-        ...prev,
-        plots: newPlots,
-        currentHarvestPods: collectedPods,
-        harvestHistoryNote:
-          collectedPods.length > 0
-            ? `${plantsWithPods.length}株から${collectedPods.length}個のサヤを収穫（${notes.slice(0, 3).join('・')}など）`
-            : '除雄後に受粉しなかったため、サヤが実りませんでした。',
-        activeTab: 'harvest',
-      };
-    });
+    setState((prev) => ({
+      ...prev,
+      plots: prev.plots.map((p) => (p && p.stage === 'PODS' ? null : p)),
+      currentHarvestPods: [...prev.currentHarvestPods, ...collectedPods],
+      harvestHistoryNote: notes.join('。'),
+      activeTab: 'harvest',
+    }));
   };
 
   const handleCrackPod = (podId: string) => {
@@ -343,14 +278,24 @@ export default function App() {
     const cracked = state.currentHarvestPods.filter((p) => p.isCracked);
     if (cracked.length === 0) return;
 
-    let harvestedSeeds: SeedItem[] = [];
-    cracked.forEach((pod) => {
-      harvestedSeeds = [...harvestedSeeds, ...pod.seeds];
-    });
+    const allSeeds: SeedItem[] = cracked.flatMap((pod) => pod.seeds);
 
     setState((prev) => {
       const currentLv = prev.currentLevel;
       const currentStats = { ...prev.levelStats[currentLv] };
+      // 集計はそのレベルの実験で得た豆だけ。種袋にはすべて入れる
+      const harvestedSeeds = allSeeds.filter((s) => isTargetSeed(currentLv, s));
+
+      const lv3Results = { ...prev.lv3Results };
+      cracked.forEach((pod) => {
+        if (!pod.testedMysteryId) return;
+        const r = lv3Results[pod.testedMysteryId] || { round: 0, wrinkled: 0 };
+        const wrinkled = pod.seeds.filter((s) => s.phenotype.shape === 'wrinkled').length;
+        lv3Results[pod.testedMysteryId] = {
+          round: r.round + pod.seeds.length - wrinkled,
+          wrinkled: r.wrinkled + wrinkled,
+        };
+      });
 
       let addedRound = 0;
       let addedWrinkled = 0;
@@ -378,13 +323,15 @@ export default function App() {
       const newRound = currentStats.round + addedRound;
       const newWrinkled = currentStats.wrinkled + addedWrinkled;
 
-      const newHistory = [
-        ...currentStats.history,
-        {
-          cumulativeCount: newTotal,
-          roundRatio: newTotal > 0 ? newRound / newTotal : 0,
-        },
-      ];
+      const newHistory = harvestedSeeds.length > 0
+        ? [
+            ...currentStats.history,
+            {
+              cumulativeCount: newTotal,
+              roundRatio: newTotal > 0 ? newRound / newTotal : 0,
+            },
+          ]
+        : currentStats.history;
 
       const updatedStats = {
         totalSeeds: newTotal,
@@ -399,22 +346,6 @@ export default function App() {
         history: newHistory,
       };
 
-      // 種袋への追加（収穫した豆のサンプルを種袋ストックへ合流）
-      // 代表的な表現型ごとに種袋アイテムを作成または加算
-      let updatedSeedBag = [...prev.seedBag];
-      if (harvestedSeeds.length > 0) {
-        const firstSeed = harvestedSeeds[0];
-        const newBagItem = {
-          id: `harvested_seed_${Date.now()}`,
-          sampleSeed: firstSeed,
-          count: harvestedSeeds.length,
-          label: `${firstSeed.generation} 収穫豆 (${firstSeed.phenotype.shape === 'round' ? '丸' : 'しわ'}${
-            firstSeed.phenotype.color ? `・${firstSeed.phenotype.color === 'yellow' ? '黄' : '緑'}` : ''
-          })`,
-        };
-        updatedSeedBag = [newBagItem, ...updatedSeedBag];
-      }
-
       return {
         ...prev,
         currentHarvestPods: [],
@@ -422,8 +353,9 @@ export default function App() {
           ...prev.levelStats,
           [currentLv]: updatedStats,
         },
-        seedBag: updatedSeedBag,
-        activeTab: 'stats',
+        seedBag: mergeHarvestIntoBag(prev.seedBag, allSeeds),
+        lv3Results,
+        activeTab: harvestedSeeds.length > 0 ? 'stats' : 'seedbag',
       };
     });
   };
@@ -456,8 +388,9 @@ export default function App() {
       playSuccessChime(prev.soundEnabled);
 
       // 前のレベル達成で次のレベルをアンロック
-      const nextLv = (lv + 1) as 2 | 3 | 4;
-      const newUnlocked = prev.unlockedLevels.includes(nextLv)
+      // Lv3は推理の正解で次が開く
+      const nextLv = lv + 1;
+      const newUnlocked = lv >= 3 || prev.unlockedLevels.includes(nextLv)
         ? prev.unlockedLevels
         : [...prev.unlockedLevels, nextLv];
 
@@ -518,6 +451,10 @@ export default function App() {
     return false;
   };
 
+  const lv = state.currentLevel;
+  const visibleBag = state.seedBag.filter((item) => isBagItemForLevel(item, lv));
+  const testedAll = state.lv3MysterySeeds.every((m) => state.lv3Results[m.id]);
+
   return (
     <div className="min-h-screen flex flex-col bg-[#F8F5EE] text-[#2C3E2D]">
       {/* 1. ヘッダーナビゲーション */}
@@ -536,6 +473,9 @@ export default function App() {
             <MendelGuide state={state} />
             <GardenField
               state={state}
+              seedBag={visibleBag}
+              selectedSeedId={selectedSeedId}
+              onSelectSeed={setSelectedSeedId}
               onPlantSeed={handlePlantSeed}
               onPlantAllAvailable={handlePlantAllAvailable}
               onAdvanceTime={handleAdvanceTime}
@@ -573,7 +513,9 @@ export default function App() {
           <MysteryNote
             note={state.notebooks[state.currentLevel]}
             level={state.currentLevel}
-            totalSeedsHarvested={state.levelStats[state.currentLevel].totalSeeds}
+            stats={state.levelStats[lv]}
+            canVerify={lv === 3 ? testedAll : state.levelStats[lv].totalSeeds >= REQUIRED_SEEDS[lv]}
+            lv3Results={state.lv3Results}
             lv3MysterySeeds={state.lv3MysterySeeds}
             soundEnabled={state.soundEnabled}
             onSelectOption={handleSelectNoteOption}
@@ -584,9 +526,10 @@ export default function App() {
 
         {state.activeTab === 'seedbag' && (
           <SeedBagView
-            seedBag={state.seedBag}
+            seedBag={visibleBag}
             level={state.currentLevel}
             onSelectSeedToPlant={(id) => {
+              setSelectedSeedId(id);
               handleTabChange('garden');
             }}
             onGoToGarden={() => handleTabChange('garden')}

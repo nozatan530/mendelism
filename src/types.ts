@@ -31,6 +31,7 @@ export interface SeedItem {
   generation: 'P' | 'F1' | 'F2' | 'Lv3Mystery' | 'Test' | 'Custom';
   parentLabel?: string;
   identifiedGenotype?: ShapeGenotype; // For Lv3 when user solves the testcross
+  mysteryId?: string; // Lv3の謎の豆なら、そのID
 }
 
 export type PlantStage =
@@ -48,7 +49,7 @@ export interface PlantData {
   stage: PlantStage;
   isEmasculated: boolean; // 除雄したか（おしべを取り除いたか）
   pollinatedByPlantId: string | null; // 花粉親株ID
-  pollinatorGenotype?: PlantGenotype;
+  pollinatorSeed?: SeedItem; // 花粉親の豆（花粉親を収穫しても失われないよう保持）
   pollinationResult: 'self' | 'cross' | 'failed'; // 結実判定
   pods: PodData[];
 }
@@ -57,6 +58,9 @@ export interface PodData {
   id: string;
   isCracked: boolean;
   seeds: SeedItem[];
+  sourceNote: string; // どの株の、どんな受粉で実ったか
+  pollination: 'self' | 'cross';
+  testedMysteryId?: string; // しわ(aa)との検定交雑なら、調べた謎の豆のID
 }
 
 export interface LevelStats {
@@ -110,12 +114,14 @@ export interface GameState {
     label: string;
     isStartingSeed?: boolean;
     hiddenGenotype?: boolean;
+    seeds?: SeedItem[]; // 収穫した豆。1粒ずつ遺伝子型が違う
   }[];
   currentHarvestPods: PodData[]; // 収穫台に並んでいるサヤ
   harvestHistoryNote: string | null;
   levelStats: { [level: number]: LevelStats };
   notebooks: { [level: number]: MysteryNoteItem };
   lv3MysterySeeds: Lv3MysterySeedStatus[];
+  lv3Results: { [mysteryId: string]: { round: number; wrinkled: number } };
   soundEnabled: boolean;
   activeTab: 'garden' | 'harvest' | 'stats' | 'notebook' | 'seedbag';
 }
