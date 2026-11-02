@@ -1,0 +1,6 @@
+{
+  "name": "メンデルの畑 - エンドウ遺伝シミュレーター",
+  "description": "エンドウの栽培・交配・サヤ割り収穫を追体験しながら遺伝の法則（優性・分離の法則・検定交雑・独立の法則）を学ぶ高校生向けシミュレーター。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
