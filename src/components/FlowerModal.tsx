@@ -15,6 +15,8 @@ interface FlowerModalProps {
   onClose: () => void;
   onEmasculate: (plantId: string) => void;
   onPollinate: (targetPlantId: string, donorPlantId: string) => void;
+  // true なら、除雄で取ったおしべを乾かして取っておき、咲くころに出た花粉を使える
+  keepRemovedStamens?: boolean;
 }
 
 const STAMENS = [
@@ -35,14 +37,18 @@ export const FlowerModal: React.FC<FlowerModalProps> = ({
   onClose,
   onEmasculate,
   onPollinate,
+  keepRemovedStamens = false,
 }) => {
   const [selectedDonorId, setSelectedDonorId] = useState<string | null>(null);
   const [removedStamens, setRemovedStamens] = useState<number[]>([]);
 
-  // 花粉がとれるのは、咲いていて、おしべが残っている株だけ
+  // 花粉がとれるのは、咲いていて、おしべが残っている（または取っておいた）別の株だけ
   const donorCandidates = allPlants.filter(
     (p): p is PlantData =>
-      p !== null && p.id !== plant.id && p.stage === 'FLOWER' && !p.isEmasculated
+      p !== null &&
+      p.id !== plant.id &&
+      p.stage === 'FLOWER' &&
+      (!p.isEmasculated || keepRemovedStamens)
   );
 
   const handlePickStamen = (index: number) => {
@@ -212,6 +218,11 @@ export const FlowerModal: React.FC<FlowerModalProps> = ({
                 次の段階（開花）に進むと、筆を使って別の株の花粉を受粉させることができます。
               </p>
             )}
+            {plant.isEmasculated && keepRemovedStamens && (
+              <p className="text-xs text-center text-[#586C54]">
+                取ったおしべは乾かして取っておきます。花が咲くころに花粉が出るので、ほかの株の受粉に使えます（この株のめしべには使えません）。
+              </p>
+            )}
           </div>
         )}
 
@@ -253,7 +264,9 @@ export const FlowerModal: React.FC<FlowerModalProps> = ({
 
                 {donorCandidates.length === 0 ? (
                   <p className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
-                    花粉をとれる株がありません。花粉親には、除雄していない、花が咲いている株が必要です。
+                    {keepRemovedStamens
+                      ? '花粉をとれる株がありません。花粉親には、この株とは別の、花が咲いている株が必要です。'
+                      : '花粉をとれる株がありません。花粉親には、除雄していない、花が咲いている株が必要です。'}
                   </p>
                 ) : (
                   <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto p-1 border border-[#DECFA4] rounded-xl bg-white/60">
@@ -269,7 +282,9 @@ export const FlowerModal: React.FC<FlowerModalProps> = ({
                               : 'bg-white border-stone-200 hover:border-[#8DA67E] text-stone-700'
                           }`}
                         >
-                          <span className="font-semibold">{donor.slotIndex + 1}番区画</span>
+                          <span className="font-semibold">
+                            {donor.slotIndex + 1}番区画{donor.isEmasculated ? '（取っておいたおしべ）' : ''}
+                          </span>
                           <span className="text-[11px] text-stone-500">
                             {donor.seed.parentLabel || donor.seed.generation}
                           </span>

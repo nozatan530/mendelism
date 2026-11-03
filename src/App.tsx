@@ -182,8 +182,11 @@ export default function App() {
   const handleFastForwardToPods = () => {
     setState((prev) => {
       let currentPlots = [...prev.plots];
+      // 除雄したまま受粉していない花があれば、開花で止める（そのまま進むと実らない）
+      const waiting = () =>
+        currentPlots.some((p) => p && p.stage === 'FLOWER' && p.isEmasculated && !p.pollinatedByPlantId);
       // 最大5回進めればどの段階からでもPODSに到達
-      for (let step = 0; step < 5; step++) {
+      for (let step = 0; step < 5 && !waiting(); step++) {
         currentPlots = currentPlots.map((p) => {
           if (!p) return null;
           return advancePlantStage(p);
@@ -570,6 +573,7 @@ export default function App() {
           onClose={() => setFocusedPlantModal(null)}
           onEmasculate={handleEmasculate}
           onPollinate={handlePollinate}
+          keepRemovedStamens
         />
       )}
 
