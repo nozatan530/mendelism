@@ -36,6 +36,7 @@
 - 型チェック: `npm run lint`
 - 遺伝モデルの試算: `npm run check`
 - ビルド: `npm run build`
+- 公開: `main` に push すると GitHub Actions（`.github/workflows/deploy.yml`）がビルドし、GitHub Pages（https://mendel.meetupsensei.com/）に公開する
 
 ## 技術スタック
 
