@@ -58,6 +58,10 @@ export const GardenField: React.FC<GardenFieldProps> = ({
   const emptyPlotsCount = state.plots.filter((p) => p === null).length;
   const hasHarvestablePods = activePlants.some((p) => p.stage === 'PODS');
   const allInPods = activePlants.length > 0 && activePlants.every((p) => p.stage === 'PODS');
+  // 除雄したまま受粉を待っている花（早送りはここで止まる）
+  const waitingPollen = activePlants.some(
+    (p) => p.stage === 'FLOWER' && p.isEmasculated && !p.pollinatedByPlantId
+  );
 
   const selectedBagItem = seedBag.find((i) => i.id === selectedSeedBagItemId);
 
@@ -196,6 +200,12 @@ export const GardenField: React.FC<GardenFieldProps> = ({
           )}
         </div>
       </div>
+
+      {waitingPollen && (
+        <p className="p-3 bg-[#FFF7E8] rounded-xl border border-[#F2D59B] text-xs text-[#6B5324]">
+          除雄した花が受粉を待っています。花をタップして、筆で花粉をつけよう（早送りはここで止まります）。
+        </p>
+      )}
 
       {/* 2. 12区画の畑グリッド */}
       <div className="bg-[#5C4028] p-4 sm:p-6 rounded-3xl border-4 border-[#3D2918] shadow-inner relative overflow-hidden">
