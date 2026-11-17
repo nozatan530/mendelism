@@ -11,6 +11,8 @@ import { playHarvestFanfare, playPodPop, playSuccessChime } from '../utils/sound
 import { FlowerModal } from '../components/FlowerModal';
 import { PeaVisual } from '../components/PeaVisual';
 import { PlantVisual } from '../components/PlantVisual';
+import { StepGuide } from '../components/StepGuide';
+import { GameSelection, getGameGuide, hasBothStarters } from './guide';
 import {
   applyDeadline,
   applyDelivery,
@@ -40,7 +42,8 @@ const STAGE_GUIDE: { [s in PlantStage]: string } = {
   PODS: 'サヤが実りました。収穫しよう。',
 };
 
-type Selection = { kind: 'starter'; id: string } | { kind: 'lot'; lotId: string; key: string };
+type Selection = GameSelection;
+const HINT = 'ring-4 ring-amber-400 ring-offset-2';
 
 function loadGame(): GameData {
   try {
@@ -50,6 +53,8 @@ function loadGame(): GameData {
     return createGame();
   }
 }
+
+const beforeBud = (stage?: PlantStage) => !!stage && STAGE_ORDER.indexOf(stage) < STAGE_ORDER.indexOf('BUD');
 
 function growPlant(plant: PlantData): PlantData {
   const next = STAGE_ORDER[STAGE_ORDER.indexOf(plant.stage) + 1];
@@ -79,6 +84,13 @@ export default function GameApp() {
   }, [game]);
 
   const order = ORDERS[game.orderIndex];
+  const guide = getGameGuide(game, box);
+  const hint = (button: typeof guide.button) => (guide.button === button ? HINT : '');
+  // 案内が勧める豆が変わったら、選び直しておく（前に選んだ豆をまちがえてまかないように）
+  const guideSelKey = guide.sel ? JSON.stringify(guide.sel) : '';
+  useEffect(() => {
+    if (guideSelKey) setSelection(JSON.parse(guideSelKey) as Selection);
+  }, [guideSelKey]);
   const plants = game.plants.filter((p): p is PlantData => p !== null);
   const stage = plants[0]?.stage ?? 'SEEDED';
   const focused = plants.find((p) => p.id === focusId) ?? null;
@@ -133,9 +145,33 @@ export default function GameApp() {
     setGame((g) => {
       const started = g.growing ? g : { ...applyDeadline(g), growing: true };
       const grow = (list: (PlantData | null)[]) => list.map((p) => (p ? growPlant(p) : null));
-      let list = grow(started.plants);
-      while (toPods && list.some((p) => p && p.stage !== 'PODS')) list = grow(list);
-      return { ...started, plants: list };
+      // 除雄したまま受粉していない花があれば、早送りは開花で止める（そのまま進むと実らない）
+      const waiting = (list: (PlantData | null)[]) =>
+        list.some((p) => p && p.stage === 'FLOWER' && p.isEmasculated && !p.pollinatedByPlantId);
+      if (toPods && waiting(started.plants)) {
+        return { ...started, notice: '除雄して、まだ受粉していない花があります。花をタップして受粉させてから進めよう。' };
+      }
+      // 2種類の純系を植えたときは、つぼみで一度止める（通り過ぎると交配できない）
+      const stageOf = (list: (PlantData | null)[]) => list.find((p) => p)?.stage;
+      const stopAtBud = toPods && hasBothStarters(started.plants) && beforeBud(stageOf(started.plants));
+      const reachedBud = (list: (PlantData | null)[]) => stopAtBud && stageOf(list) === 'BUD';
+      // 前の段階の案内（つぼみ・開花）は、先へ進めたら消す
+      const stale = g.growing ? null : started.notice;
+      let list = started.plants;
+      do {
+        list = grow(list);
+      } while (toPods && list.some((p) => p && p.stage !== 'PODS') && !waiting(list) && !reachedBud(list));
+      return {
+        ...started,
+        plants: list,
+        notice: !toPods
+          ? stale
+          : waiting(list)
+          ? '開花しました。除雄した花に、筆で花粉をつけよう。'
+          : reachedBud(list)
+          ? 'つぼみになりました。かけ合わせるなら、今のうちにおしべを取ろう。このまま進めると自家受精になります。'
+          : stale,
+      };
     });
   };
 
@@ -289,6 +325,8 @@ export default function GameApp() {
           </section>
         )}
 
+        {order && !gameOver && <StepGuide guide={guide} notice={null} />}
+
         {game.notice && (
           <div className="p-3 bg-[#FFF7E8] rounded-xl border border-[#F2D59B] text-xs text-[#6B5324] flex items-center justify-between gap-3">
             <span>{game.notice}</span>
@@ -300,7 +338,7 @@ export default function GameApp() {
 
         {/* 収穫 */}
         {game.harvest ? (
-          <HarvestSection harvest={game.harvest} onCrack={crack} onStore={storeHarvest} />
+          <HarvestSection harvest={game.harvest} onCrack={crack} onStore={storeHarvest} hint={hint} />
         ) : (
           <>
             {/* 畑 */}
@@ -321,6 +359,8 @@ export default function GameApp() {
                       }
                     }}
                     className={`h-36 rounded-2xl p-2 flex flex-col justify-between text-left ${
+                      guide.plot === i ? 'ring-4 ring-amber-400 ' : ''
+                    }${
                       plant
                         ? 'bg-[#F9F7EE] border-2 border-[#D8C69F]'
                         : 'bg-[#6E4F32]/80 border-2 border-dashed border-[#8A633F] cursor-pointer'
@@ -356,7 +396,7 @@ export default function GameApp() {
                   <button
                     onClick={sowAll}
                     disabled={!available(selection)}
-                    className="px-3 py-2 bg-[#E8F0E2] text-[#345924] rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50"
+                    className={`px-3 py-2 bg-[#E8F0E2] text-[#345924] rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50 ring-offset-[#5C4028] ${hint('sowAll')}`}
                   >
                     空き区画すべてにまく
                   </button>
@@ -365,14 +405,14 @@ export default function GameApp() {
                   <>
                     <button
                       onClick={() => advance(false)}
-                      className="px-4 py-2 bg-[#4A7836] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                      className={`px-4 py-2 bg-[#4A7836] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer ring-offset-[#5C4028] ${hint('advance')}`}
                     >
                       <Play className="w-3.5 h-3.5 fill-current" />
                       {game.growing ? '時間を進める' : '育て始める'}
                     </button>
                     <button
                       onClick={() => advance(true)}
-                      className="px-3 py-2 bg-white text-[#4A7836] rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                      className={`px-3 py-2 bg-white text-[#4A7836] rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer ring-offset-[#5C4028] ${hint('fastForward')}`}
                     >
                       <FastForward className="w-3.5 h-3.5" />
                       収穫まで早送り
@@ -382,7 +422,7 @@ export default function GameApp() {
                 {stage === 'PODS' && plants.length > 0 && (
                   <button
                     onClick={harvestAll}
-                    className="px-4 py-2 bg-[#D97706] text-white rounded-xl text-xs font-bold cursor-pointer"
+                    className={`px-4 py-2 bg-[#D97706] text-white rounded-xl text-xs font-bold cursor-pointer ring-offset-[#5C4028] ${hint('harvest')}`}
                   >
                     すべて収穫する
                   </button>
@@ -404,6 +444,7 @@ export default function GameApp() {
                       seed={s}
                       text={`${s.parentLabel}（何度でも）`}
                       selected={isSelected(sel)}
+                      hinted={guideSelKey === JSON.stringify(sel)}
                       onSelect={() => setSelection(sel)}
                     />
                   );
@@ -427,13 +468,16 @@ export default function GameApp() {
                             seed={lot.seeds.find((s) => samePheno(s.phenotype, g.phenotype))!}
                             text={`${g.label} ${g.count}粒`}
                             selected={isSelected(sel)}
+                            hinted={guideSelKey === JSON.stringify(sel)}
                             onSelect={() => setSelection(sel)}
                           />
                           {order && (
                             <button
                               onClick={() => addToBox(lot, g.key, g.count)}
                               aria-label={`${g.label}を納品箱に入れる`}
-                              className="px-2 py-1.5 text-[11px] font-bold rounded-lg bg-[#FDF0CE] text-[#8C6314] cursor-pointer"
+                              className={`px-2 py-1.5 text-[11px] font-bold rounded-lg bg-[#FDF0CE] text-[#8C6314] cursor-pointer ${
+                                guide.picks?.includes(pick) ? HINT : ''
+                              }`}
                             >
                               箱へ{box[pick] ? `(${box[pick]})` : ''}
                             </button>
@@ -452,14 +496,14 @@ export default function GameApp() {
                   </span>
                   <div className="flex items-center gap-2">
                     {boxTotal > 0 && (
-                      <button onClick={() => setBox({})} className="text-xs text-stone-500 cursor-pointer">
+                      <button onClick={() => setBox({})} className={`text-xs text-stone-500 cursor-pointer rounded ${hint('emptyBox')}`}>
                         箱を空にする
                       </button>
                     )}
                     <button
                       onClick={deliver}
                       disabled={boxTotal !== order.qty}
-                      className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 bg-[#D97706] text-white cursor-pointer disabled:bg-stone-200 disabled:text-stone-400 disabled:cursor-not-allowed"
+                      className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 bg-[#D97706] text-white cursor-pointer disabled:bg-stone-200 disabled:text-stone-400 disabled:cursor-not-allowed ${hint('deliver')}`}
                     >
                       <PackageCheck className="w-4 h-4" />
                       納品する
@@ -478,6 +522,7 @@ export default function GameApp() {
           allPlants={game.plants}
           soundEnabled={true}
           onClose={() => setFocusId(null)}
+          keepRemovedStamens
           onEmasculate={(id) =>
             setGame((g) => ({
               ...g,
@@ -557,11 +602,26 @@ export default function GameApp() {
   );
 }
 
-function SeedChip({ seed, text, selected, onSelect }: { seed: SeedItem; text: string; selected: boolean; onSelect: () => void }) {
+function SeedChip({
+  seed,
+  text,
+  selected,
+  hinted,
+  onSelect,
+}: {
+  seed: SeedItem;
+  text: string;
+  selected: boolean;
+  hinted?: boolean;
+  onSelect: () => void;
+}) {
   return (
     <button
       onClick={onSelect}
+      aria-pressed={selected}
       className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1.5 cursor-pointer ${
+        hinted ? HINT : ''
+      } ${
         selected
           ? 'bg-[#4A7836] text-white border-[#4A7836]'
           : 'bg-white border-[#E0D5BE] text-stone-700'
@@ -577,10 +637,12 @@ function HarvestSection({
   harvest,
   onCrack,
   onStore,
+  hint,
 }: {
   harvest: HarvestPlant[];
   onCrack: (plotNo: number, podId?: string) => void;
   onStore: () => void;
+  hint: (button: 'store' | 'crackAll') => string;
 }) {
   const allCracked = harvest.every((h) => h.pods.every((p) => p.isCracked));
 
@@ -591,13 +653,13 @@ function HarvestSection({
           サヤを割って、株ごとの豆を見よう
         </h2>
         {allCracked ? (
-          <button onClick={onStore} className="px-4 py-2 bg-[#4A7836] text-white text-xs font-bold rounded-xl cursor-pointer">
+          <button onClick={onStore} className={`px-4 py-2 bg-[#4A7836] text-white text-xs font-bold rounded-xl cursor-pointer ${hint('store')}`}>
             倉庫にしまう
           </button>
         ) : (
           <button
             onClick={() => harvest.forEach((h) => onCrack(h.plotNo))}
-            className="px-4 py-2 bg-[#D97706] text-white text-xs font-bold rounded-xl cursor-pointer"
+            className={`px-4 py-2 bg-[#D97706] text-white text-xs font-bold rounded-xl cursor-pointer ${hint('crackAll')}`}
           >
             全部割る
           </button>

@@ -9,10 +9,11 @@ import { GameState } from '../types';
 import { Guide } from '../utils/guide';
 
 interface StepGuideProps {
-  guide: Guide;
-  activeTab: GameState['activeTab'];
+  // 品種改良ゲームにはタブがないので、tab まわりは省ける
+  guide: Pick<Guide, 'steps' | 'current' | 'text' | 'why'> & { tab?: GameState['activeTab'] };
+  activeTab?: GameState['activeTab'];
   notice: string | null;
-  onGoToTab: (tab: GameState['activeTab']) => void;
+  onGoToTab?: (tab: GameState['activeTab']) => void;
 }
 
 const TAB_LABELS: { [tab in GameState['activeTab']]: string } = {
@@ -39,7 +40,7 @@ export const StepGuide: React.FC<StepGuideProps> = ({ guide, activeTab, notice, 
 
   return (
     <div className="bg-[#FAF7F0] border-2 border-[#C9B77E] rounded-2xl p-4 mb-6 space-y-3 text-[#2C3E2D]">
-      <ol className="flex flex-wrap gap-1.5" aria-label="このレベルの手順">
+      <ol className="flex flex-wrap gap-1.5" aria-label="手順">
         {guide.steps.map((label, i) => {
           const isDone = i < guide.current;
           const isNow = i === guide.current;
@@ -79,9 +80,9 @@ export const StepGuide: React.FC<StepGuideProps> = ({ guide, activeTab, notice, 
           </p>
           {guide.why && <p className="text-xs text-[#586C54] mt-1 leading-relaxed">なぜ？ {guide.why}</p>}
         </div>
-        {guide.tab !== activeTab && (
+        {guide.tab && onGoToTab && guide.tab !== activeTab && (
           <button
-            onClick={() => onGoToTab(guide.tab)}
+            onClick={() => onGoToTab(guide.tab!)}
             className="px-4 py-2 bg-[#D97706] hover:bg-[#B45309] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer shrink-0"
           >
             <span>{TAB_LABELS[guide.tab]}へ</span>
