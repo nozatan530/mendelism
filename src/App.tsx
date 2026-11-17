@@ -589,6 +589,13 @@ export default function App() {
         )}
       </main>
 
+      <footer className="max-w-7xl mx-auto px-4 lg:px-8 pb-8 text-xs text-[#586C54]">
+        <a href="./game/" className="font-bold text-[#4A7836] underline underline-offset-2">
+          品種改良ゲームで腕だめし →
+        </a>
+        <span className="ml-2">注文どおりの豆を、交配で作って納品します。</span>
+      </footer>
+
       {/* 3. 花・つぼみの拡大ダイアログ（除雄・筆受粉） */}
       {focusedPlantModal && (
         <FlowerModal

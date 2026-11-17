@@ -285,6 +285,9 @@ export default function GameApp() {
             メンデルの畑
           </span>
           <div className="flex items-center gap-3 text-xs font-bold text-[#485945]">
+            <a href="../" className="whitespace-nowrap text-[#4A7836] underline underline-offset-2">
+              Lv1〜4で学ぶ
+            </a>
             <span className="whitespace-nowrap">シーズン {game.season}</span>
             <span className="flex items-center gap-0.5" aria-label={`信用 ${game.credit}`}>
               {Array.from({ length: START_CREDIT }, (_, i) => (

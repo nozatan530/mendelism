@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "dev:game": "VITE_GAME_MODE=1 vite --port=3000 --host=0.0.0.0",
-    "build": "vite build",
+    "build": "vite build && node scripts/make-game-page.mjs",
     "balance": "tsx scripts/balance-game.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist",
