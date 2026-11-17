@@ -20,6 +20,7 @@ import {
   REQUIRED_SEEDS,
   takeSeedFromBag,
 } from './utils/genetics';
+import { getGuide, isCrossLevel, offTargetMessage, partnerSeedId } from './utils/guide';
 import { playHarvestFanfare, playSuccessChime } from './utils/sound';
 import { Header } from './components/Header';
 import { GardenField } from './components/GardenField';
@@ -27,7 +28,7 @@ import { HarvestView } from './components/HarvestView';
 import { StatsGraph } from './components/StatsGraph';
 import { MysteryNote } from './components/MysteryNote';
 import { SeedBagView } from './components/SeedBagView';
-import { MendelGuide } from './components/MendelGuide';
+import { StepGuide } from './components/StepGuide';
 import { FlowerModal } from './components/FlowerModal';
 import { PredictionCard } from './components/PredictionCard';
 import { DevCheckPanel } from './components/DevCheckPanel';
@@ -38,6 +39,8 @@ export default function App() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isCheckMode, setIsCheckMode] = useState(false);
   const [selectedSeedId, setSelectedSeedId] = useState<string | null>(null);
+  // 集計に入らない豆をしまったときの説明（次に種をまくまで出す）
+  const [guideNotice, setGuideNotice] = useState<string | null>(null);
 
   // 初回マウント時にURLパラメータ ?check を判定
   useEffect(() => {
@@ -72,6 +75,9 @@ export default function App() {
   };
 
   const handleLevelChange = (newLevel: 1 | 2 | 3 | 4) => {
+    // 前のレベルで選んだ種を引きずらない（そのレベルの種を選び直す）
+    setSelectedSeedId(null);
+    setGuideNotice(null);
     setState((prev) => {
       // そのレベルに必要な初期種子がまだ種袋にない場合は補充
       const levelDefaultSeeds = getDefaultSeedBagForLevel(newLevel, prev.lv3MysterySeeds);
@@ -113,6 +119,10 @@ export default function App() {
   });
 
   const handlePlantSeed = (slotIndex: number, seedBagItemId: string) => {
+    setGuideNotice(null);
+    // 交配するレベルでは、まいた種の相手がまだ畑になければ、次にまく種を相手に切り替える
+    const partner = partnerSeedId(state, seedBagItemId);
+    if (partner) setSelectedSeedId(partner);
     setState((prev) => {
       const taken = takeSeedFromBag(prev.seedBag, seedBagItemId);
       if (!taken) return prev;
@@ -123,6 +133,7 @@ export default function App() {
   };
 
   const handlePlantAllAvailable = (seedBagItemId: string) => {
+    setGuideNotice(null);
     setState((prev) => {
       let bag = prev.seedBag;
       const newPlots = [...prev.plots];
@@ -185,8 +196,15 @@ export default function App() {
       // 除雄したまま受粉していない花があれば、開花で止める（そのまま進むと実らない）
       const waiting = () =>
         currentPlots.some((p) => p && p.stage === 'FLOWER' && p.isEmasculated && !p.pollinatedByPlantId);
+      // 交配するレベルでは、つぼみで一度止める（通り過ぎると除雄できず、自家受精になる）
+      const beforeBud = new Set(
+        isCrossLevel(prev.currentLevel)
+          ? currentPlots.filter((p) => p && ['SEEDED', 'SPROUT', 'GROWING'].includes(p.stage)).map((p) => p!.id)
+          : []
+      );
+      const reachedBud = () => currentPlots.some((p) => p && p.stage === 'BUD' && beforeBud.has(p.id));
       // 最大5回進めればどの段階からでもPODSに到達
-      for (let step = 0; step < 5 && !waiting(); step++) {
+      for (let step = 0; step < 5 && !waiting() && !reachedBud(); step++) {
         currentPlots = currentPlots.map((p) => {
           if (!p) return null;
           return advancePlantStage(p);
@@ -283,6 +301,10 @@ export default function App() {
     if (cracked.length === 0) return;
 
     const allSeeds: SeedItem[] = cracked.flatMap((pod) => pod.seeds);
+    const hasTarget = allSeeds.some((s) => isTargetSeed(state.currentLevel, s));
+    setGuideNotice(hasTarget ? null : offTargetMessage(state.currentLevel));
+    // 次の栽培は、そのレベルで使う種を選び直すところから始める
+    setSelectedSeedId(null);
 
     setState((prev) => {
       const currentLv = prev.currentLevel;
@@ -359,7 +381,7 @@ export default function App() {
         },
         seedBag: mergeHarvestIntoBag(prev.seedBag, allSeeds),
         lv3Results,
-        activeTab: harvestedSeeds.length > 0 ? 'stats' : 'seedbag',
+        activeTab: harvestedSeeds.length > 0 ? 'stats' : 'garden',
       };
     });
   };
@@ -472,6 +494,7 @@ export default function App() {
   const lv = state.currentLevel;
   const visibleBag = state.seedBag.filter((item) => isBagItemForLevel(item, lv));
   const testedAll = state.lv3MysterySeeds.every((m) => state.lv3Results[m.id]);
+  const guide = getGuide(state);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F8F5EE] text-[#2C3E2D]">
@@ -486,6 +509,8 @@ export default function App() {
 
       {/* 2. メインコンテンツエリア */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+        <StepGuide guide={guide} activeTab={state.activeTab} notice={guideNotice} onGoToTab={handleTabChange} />
+
         {state.activeTab === 'garden' && !state.notebooks[lv].predictionLocked && (
           <PredictionCard
             note={state.notebooks[lv]}
@@ -496,9 +521,9 @@ export default function App() {
 
         {state.activeTab === 'garden' && state.notebooks[lv].predictionLocked && (
           <div className="space-y-6">
-            <MendelGuide state={state} />
             <GardenField
               state={state}
+              guide={guide}
               seedBag={visibleBag}
               selectedSeedId={selectedSeedId}
               onSelectSeed={setSelectedSeedId}
