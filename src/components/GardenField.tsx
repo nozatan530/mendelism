@@ -7,6 +7,7 @@ import React from 'react';
 import { GameState, PlantData, PlantStage, SeedItem } from '../types';
 import { PlantVisual } from './PlantVisual';
 import { PeaVisual } from './PeaVisual';
+import { defaultSeedId, Guide } from '../utils/guide';
 import {
   FastForward,
   Play,
@@ -21,6 +22,7 @@ import {
 
 interface GardenFieldProps {
   state: GameState;
+  guide: Guide;
   seedBag: GameState['seedBag'];
   selectedSeedId: string | null;
   onSelectSeed: (id: string) => void;
@@ -36,6 +38,7 @@ interface GardenFieldProps {
 
 export const GardenField: React.FC<GardenFieldProps> = ({
   state,
+  guide,
   seedBag,
   selectedSeedId,
   onSelectSeed,
@@ -48,9 +51,10 @@ export const GardenField: React.FC<GardenFieldProps> = ({
   onOpenFlowerModal,
   onGoToHarvest,
 }) => {
-  // 選択中の種が無くなった・別レベルのものなら、選べる先頭の種にする
+  // 選択中の種が無くなった・別レベルのものなら、そのレベルで使う種 → 先頭の種の順に選ぶ
   const selectedSeedBagItemId =
     seedBag.find((i) => i.id === selectedSeedId && i.count > 0)?.id ||
+    seedBag.find((i) => i.id === defaultSeedId(state) && i.count > 0)?.id ||
     seedBag.find((i) => i.count > 0)?.id ||
     '';
 
@@ -64,6 +68,9 @@ export const GardenField: React.FC<GardenFieldProps> = ({
   );
 
   const selectedBagItem = seedBag.find((i) => i.id === selectedSeedBagItemId);
+  // 案内が指しているボタン・区画を目立たせる
+  const HINT = 'ring-4 ring-amber-400 ring-offset-2 ring-offset-[#FAF7F0]';
+  const hint = (button: Guide['button']) => (guide.button === button ? HINT : '');
 
   const stageLabels: { [s in PlantStage]: string } = {
     SEEDED: 'まきたて',
@@ -106,6 +113,8 @@ export const GardenField: React.FC<GardenFieldProps> = ({
                   onClick={() => onSelectSeed(item.id)}
                   disabled={!hasCount}
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border flex items-center gap-2 ${
+                    item.id === guide.seedId && !isSelected ? HINT : ''
+                  } ${
                     isSelected
                       ? 'bg-[#4A7836] text-white border-[#4A7836] shadow-xs ring-2 ring-[#4A7836]/20'
                       : hasCount
@@ -136,7 +145,7 @@ export const GardenField: React.FC<GardenFieldProps> = ({
           {selectedBagItem && selectedBagItem.count > 0 && emptyPlotsCount > 0 && (
             <button
               onClick={() => onPlantAllAvailable(selectedSeedBagItemId)}
-              className="px-3 py-1.5 bg-[#E8F0E2] hover:bg-[#D5E5CB] text-[#345924] border border-[#A7CE93] rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 active:scale-98"
+              className={`px-3 py-1.5 bg-[#E8F0E2] hover:bg-[#D5E5CB] text-[#345924] border border-[#A7CE93] rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 active:scale-98 ${hint('sowAll')}`}
             >
               <Plus className="w-3.5 h-3.5" />
               <span>空き区画すべてにまく</span>
@@ -150,7 +159,7 @@ export const GardenField: React.FC<GardenFieldProps> = ({
           <button
             onClick={onAdvanceTime}
             disabled={activePlants.length === 0 || allInPods}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 ${hint('advance')} ${
               activePlants.length > 0 && !allInPods
                 ? 'bg-[#4A7836] hover:bg-[#3B6229] text-white cursor-pointer active:scale-98'
                 : 'bg-stone-200 text-stone-400 cursor-not-allowed'
@@ -165,7 +174,7 @@ export const GardenField: React.FC<GardenFieldProps> = ({
           <button
             onClick={onFastForwardToPods}
             disabled={activePlants.length === 0 || allInPods}
-            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-1 ${
+            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-1 ${hint('fastForward')} ${
               activePlants.length > 0 && !allInPods
                 ? 'bg-white hover:bg-stone-50 border-[#DECFA4] text-[#4A7836] cursor-pointer'
                 : 'bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed'
@@ -244,7 +253,7 @@ export const GardenField: React.FC<GardenFieldProps> = ({
               <div
                 key={index}
                 onClick={() => handlePlotClick(index)}
-                className={`relative rounded-2xl transition-all duration-200 select-none flex flex-col justify-between overflow-hidden cursor-pointer h-44 sm:h-48 p-2.5 ${
+                className={`relative rounded-2xl transition-all duration-200 select-none flex flex-col justify-between overflow-hidden cursor-pointer h-44 sm:h-48 p-2.5 ${guide.plot === index ? 'ring-4 ring-amber-400' : ''} ${
                   hasPlant
                     ? 'bg-[#F9F7EE] border-2 border-[#D8C69F] hover:border-[#6C9655] shadow-md transform hover:-translate-y-1'
                     : 'bg-[#6E4F32]/80 border-2 border-dashed border-[#8A633F] hover:bg-[#7D5B3A] hover:border-[#A67A4F]'
