@@ -7,13 +7,18 @@ const GAME_TITLE = 'メンデルの畑 品種改良ゲーム';
 const DESC_RE = /(<meta (?:name="description"|property="og:description") content=")[^"]*"/g;
 const GAME_DESC = '注文どおりのエンドウ豆を交配で作って納品する、品種改良ゲーム。顕性・分離・純系の見分け方を、遊びながら確かめる。';
 
+const ALT_RE = /(<meta property="og:image:alt" content=")[^"]*"/;
+const GAME_ALT = 'メンデルの畑 品種改良ゲーム。サヤの中に丸い黄色の豆としわのある緑の豆が並び、横に豆の入った木箱があるイラスト';
+
 const html = readFileSync('dist/index.html', 'utf8')
   .replaceAll('"./', '"../')
   .replaceAll(TITLE, GAME_TITLE)
   .replace(DESC_RE, `$1${GAME_DESC}"`)
-  .replace('content="https://mendel.meetupsensei.com/"', 'content="https://mendel.meetupsensei.com/game/"');
+  .replace('content="https://mendel.meetupsensei.com/"', 'content="https://mendel.meetupsensei.com/game/"')
+  .replaceAll('https://mendel.meetupsensei.com/ogp.png', 'https://mendel.meetupsensei.com/ogp-game.png')
+  .replace(ALT_RE, `$1${GAME_ALT}"`);
 
-if (!html.includes('"../assets/')) throw new Error('dist/index.html の形が変わっています。make-game-page.mjs を見直してください');
+if (!html.includes('"../assets/') || !html.includes('ogp-game.png')) throw new Error('dist/index.html の形が変わっています。make-game-page.mjs を見直してください');
 mkdirSync('dist/game', { recursive: true });
 writeFileSync('dist/game/index.html', html);
 console.log('dist/game/index.html を作りました');
